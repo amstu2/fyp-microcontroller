@@ -7,7 +7,8 @@
 #define STEPPER_IN1_2     9
 #define STEPPER_ENABLE2   10
 #define STEPPER_IN2_1     11
-#define STEPPER_IN2_2     12   
+#define STEPPER_IN2_2     12
+#define LINEAR_POT        A3
 
 #define BUFFER_INDEX_AZ_HUNDRED 0
 #define BUFFER_INDEX_AZ_TEN 1

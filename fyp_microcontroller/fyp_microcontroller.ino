@@ -43,8 +43,8 @@ void setupPins()
 
   digitalWrite(LED_PIN, LOW);
   digitalWrite(LINEAR_ACT_ENABLE, LOW);
-  digitalWrite(LINEAR_ACT_IN1, LOW);
-  digitalWrite(LINEAR_ACT_IN2, HIGH);
+  digitalWrite(LINEAR_ACT_IN1, HIGH);
+  digitalWrite(LINEAR_ACT_IN2, LOW);
   digitalWrite(STEPPER_ENABLE1, LOW);
   digitalWrite(STEPPER_IN1_1, LOW);
   digitalWrite(STEPPER_IN1_2, HIGH);
@@ -53,9 +53,28 @@ void setupPins()
   digitalWrite(STEPPER_IN2_2, HIGH);
 }
 
+void enableLinearActuator()
+{
+  digitalWrite(LINEAR_ACT_ENABLE, HIGH);
+}
+
 void extendLinearActuator()
 {
-  
+  enableLinearActuator();
+  digitalWrite(LINEAR_ACT_IN1, HIGH);
+  digitalWrite(LINEAR_ACT_IN2, LOW);
+}
+
+void retractLinearActuator()
+{
+  enableLinearActuator();
+  digitalWrite(LINEAR_ACT_IN1, LOW);
+  digitalWrite(LINEAR_ACT_IN2, HIGH);
+}
+
+void disableLinearActuator()
+{
+  digitalWrite(LINEAR_ACT_ENABLE, LOW);
 }
 
 void checkUARTRecv() 

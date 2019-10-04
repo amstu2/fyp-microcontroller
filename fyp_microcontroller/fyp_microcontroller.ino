@@ -1,3 +1,6 @@
+// TODO: MAKE SURE STEPPER MOTOR CONNECTIONS ARE CORRECT
+// ASSUMED STEPPER IN RAIL 1 IS A/NOT_A
+
 #define LED_PIN           13
 #define LINEAR_ACT_ENABLE 4
 #define LINEAR_ACT_IN1    5
@@ -10,6 +13,11 @@
 #define STEPPER_IN2_2     12
 #define LINEAR_POT        A3
 
+#define CLOCKWISE           1
+#define ANTICLOCKWISE       -1
+#define POSITIVE_POLARITY   1
+#define NEGATIVE_POLARITY   -1
+
 #define BUFFER_INDEX_AZ_HUNDRED 0
 #define BUFFER_INDEX_AZ_TEN 1
 #define BUFFER_INDEX_AZ_ONE 2
@@ -20,6 +28,8 @@
 
 float desired_azimuth = 0.0;
 float desired_elevation = 0.0;
+
+volatile byte step_number = 1;
 
 const byte buffer_size = 7;
 char received_buffer[buffer_size];
@@ -47,11 +57,11 @@ void setupPins()
   digitalWrite(LINEAR_ACT_IN1, HIGH);
   digitalWrite(LINEAR_ACT_IN2, LOW);
   digitalWrite(STEPPER_ENABLE1, LOW);
-  digitalWrite(STEPPER_IN1_1, LOW);
-  digitalWrite(STEPPER_IN1_2, HIGH);
+  digitalWrite(STEPPER_IN1_1, HIGH);
+  digitalWrite(STEPPER_IN1_2, LOW);
   digitalWrite(STEPPER_ENABLE2, LOW);
-  digitalWrite(STEPPER_IN2_1, LOW);
-  digitalWrite(STEPPER_IN2_2, HIGH);
+  digitalWrite(STEPPER_IN2_1, HIGH);
+  digitalWrite(STEPPER_IN2_2, LOW);
 }
 
 void enableLinearActuator()
@@ -76,6 +86,65 @@ void retractLinearActuator()
 void disableLinearActuator()
 {
   digitalWrite(LINEAR_ACT_ENABLE, LOW);
+}
+
+void enableStepperMotor()
+{
+  digitalWrite(STEPPER_ENABLE1, HIGH);
+  digitalWrite(STEPPER_ENABLE2, HIGH);
+}
+
+void setMotorPolarity(byte A_polatity, byte B_polarity, byte not_A_polarity, byte not_B_polarity)
+{
+  if(A_polarity == POSITIVE_POLARITY)
+  {
+    digitalWrite(STEPPER_IN1_1, HIGH);
+    digitalWrite(STEPPER_IN1_2, LOW);
+  }
+  else
+  {
+    digitalWrite(STEPPER_IN1_1, LOW);
+    digitalWrite(STEPPER_IN1_2, HIGH);
+  }
+  if(B_polarity == POSITIVE_POLARITY) 
+  {
+    digitalWrite(STEPPER_IN2_1, HIGH);
+    digitalWrite(STEPPER_IN2_2, LOW);
+  }
+  else
+  {
+    digitalWrite(STEPPER_IN2_1, LOW);
+    digitalWrite(STEPPER_IN2_2, HIGH);
+  }
+}
+
+void rotateStepperOneStep(int rotation_direction)
+{
+  enableStepperMotor();
+  if(rotation_direction == CLOCKWISE)
+  {
+    step_number++;
+    if(step_number > 5) step_number = 1;
+  }
+  else
+  {
+    step_number--;
+    if(step_number < 1) step_number = 5;
+  }
+  switch(step_number)
+  {
+    case 1:
+      
+      break;
+  }
+  
+  
+}
+
+void disableStepperMotor()
+{
+  digitalWrite(STEPPER_ENABLE1, LOW);
+  digitalWrite(STEPPER_ENABLE2, LOW);
 }
 
 void checkUARTRecv() 

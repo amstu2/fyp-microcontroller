@@ -2,21 +2,17 @@
 // ASSUMED STEPPER IN RAIL 1 IS A/NOT_A
 
 #define LED_PIN           13
-#define LINEAR_ACT_ENABLE 4
-#define LINEAR_ACT_IN1    5
-#define LINEAR_ACT_IN2    6
-#define STEPPER_ENABLE1   7
-#define STEPPER_IN1_1     8
-#define STEPPER_IN1_2     9
-#define STEPPER_ENABLE2   10
-#define STEPPER_IN2_1     11
-#define STEPPER_IN2_2     12
-#define LINEAR_POT        A3
+#define STEPPER_ENABLE1   4
+#define STEPPER_IN1_1     5
+#define STEPPER_IN1_2     6
+#define STEPPER_ENABLE2   7
+#define STEPPER_IN2_1     8
+#define STEPPER_IN2_2     9
+#define LINEAR_ACT_ENABLE 10
+#define LINEAR_ACT_IN1    11
+#define LINEAR_ACT_IN2    12
 
-#define CLOCKWISE           1
-#define ANTICLOCKWISE       -1
-#define POSITIVE_POLARITY   1
-#define NEGATIVE_POLARITY   -1
+#define LINEAR_POT        A3
 
 #define BUFFER_INDEX_AZ_HUNDRED 0
 #define BUFFER_INDEX_AZ_TEN 1
@@ -26,10 +22,16 @@
 #define BUFFER_INDEX_EL_ONE 5
 #define BUFFER_INDEX_EL_DEC 6
 
+const byte CLOCKWISE          = 1;
+const byte ANTICLOCKWISE      = -1;
+const byte POSITIVE_POLARITY  = 1;
+const byte NEGATIVE_POLARITY  = -1;
+
 float desired_azimuth = 0.0;
 float desired_elevation = 0.0;
 
 volatile byte step_number = 1;
+boolean stepper_motor_enabled = false;
 
 const byte buffer_size = 7;
 char received_buffer[buffer_size];
@@ -92,9 +94,10 @@ void enableStepperMotor()
 {
   digitalWrite(STEPPER_ENABLE1, HIGH);
   digitalWrite(STEPPER_ENABLE2, HIGH);
+  stepper_motor_enabled = true;
 }
 
-void setMotorPolarity(byte A_polatity, byte B_polarity, byte not_A_polarity, byte not_B_polarity)
+void setMotorPolarity(byte A_polarity, byte B_polarity, byte not_A_polarity, byte not_B_polarity)
 {
   if(A_polarity == POSITIVE_POLARITY)
   {
@@ -120,21 +123,30 @@ void setMotorPolarity(byte A_polatity, byte B_polarity, byte not_A_polarity, byt
 
 void rotateStepperOneStep(int rotation_direction)
 {
-  enableStepperMotor();
+  if(!stepper_motor_enabled) enableStepperMotor();
   if(rotation_direction == CLOCKWISE)
   {
     step_number++;
-    if(step_number > 5) step_number = 1;
+    if(step_number > 4) step_number = 1;
   }
   else
   {
     step_number--;
-    if(step_number < 1) step_number = 5;
+    if(step_number < 1) step_number = 4;
   }
   switch(step_number)
   {
     case 1:
-      
+      setMotorPolarity(POSITIVE_POLARITY, POSITIVE_POLARITY, NEGATIVE_POLARITY, NEGATIVE_POLARITY);
+      break;
+    case 2:
+      setMotorPolarity(NEGATIVE_POLARITY, POSITIVE_POLARITY, POSITIVE_POLARITY, NEGATIVE_POLARITY);
+      break;
+    case 3:
+      setMotorPolarity(NEGATIVE_POLARITY, NEGATIVE_POLARITY, POSITIVE_POLARITY, POSITIVE_POLARITY);
+      break;
+    case 4:
+      setMotorPolarity(POSITIVE_POLARITY, NEGATIVE_POLARITY, NEGATIVE_POLARITY, POSITIVE_POLARITY);
       break;
   }
   
@@ -145,6 +157,7 @@ void disableStepperMotor()
 {
   digitalWrite(STEPPER_ENABLE1, LOW);
   digitalWrite(STEPPER_ENABLE2, LOW);
+  stepper_motor_enabled = false;
 }
 
 void checkUARTRecv() 
@@ -152,20 +165,26 @@ void checkUARTRecv()
   char received_data;
   while((Serial.available() > 0) && new_command_received == false) {
     received_data = Serial.read();
-    if(received_data == start_char) {
+    if(received_data == start_char) 
+    {
       message_being_received = true;
     }
-    else {
-      if(message_being_received) {
-        if((received_data != end_char)) {
+    else 
+    {
+      if(message_being_received) 
+      {
+        if((received_data != end_char)) 
+        {
           received_buffer[buffer_index] = received_data;
           buffer_index++;
-          if(buffer_index > buffer_size) {
+          if(buffer_index > buffer_size) 
+          {
             buffer_index = buffer_size - 1;
             digitalWrite(LED_PIN, HIGH);
           }
         }
-        else {
+        else 
+        {
           buffer_index = 0;
           message_being_received = false;
           new_command_received = true;
@@ -197,8 +216,7 @@ void loop()
   if(new_command_received) {
     parseReceivedData();
     //Serial.println(desired_azimuth);
-    //Serial.println(desired_elevation);
-    
+    //Serial.println(desired_elevation);   
   }
   
   

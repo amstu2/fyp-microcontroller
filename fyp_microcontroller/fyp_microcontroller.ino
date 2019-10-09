@@ -22,10 +22,10 @@
 #define BUFFER_INDEX_EL_ONE 5
 #define BUFFER_INDEX_EL_DEC 6
 
-const byte CLOCKWISE          = 1;
-const byte ANTICLOCKWISE      = -1;
-const byte POSITIVE_POLARITY  = 1;
-const byte NEGATIVE_POLARITY  = -1;
+const boolean ANTICLOCKWISE       = 1;
+const boolean CLOCKWISE           = 0;
+const boolean POSITIVE_POLARITY   = 1;
+const boolean NEGATIVE_POLARITY   = 0;
 
 float desired_azimuth = 0.0;
 float desired_elevation = 0.0;
@@ -124,7 +124,7 @@ void setMotorPolarity(byte A_polarity, byte B_polarity, byte not_A_polarity, byt
 void rotateStepperOneStep(int rotation_direction)
 {
   if(!stepper_motor_enabled) enableStepperMotor();
-  if(rotation_direction == CLOCKWISE)
+  if(rotation_clockwise)
   {
     step_number++;
     if(step_number > 4) step_number = 1;
@@ -207,6 +207,7 @@ void setup()
 {
   // put your setup code here, to run once:
   Serial.begin(115200);
+  setupPins();
 }
 
 void loop() 

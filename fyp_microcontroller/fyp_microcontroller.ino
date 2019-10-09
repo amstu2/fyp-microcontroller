@@ -14,6 +14,11 @@
 
 #define LINEAR_POT        A3
 
+#define STEPS_PER_STEPPER_REV 200
+#define STEPPER_TEETH         10
+#define DRIVEN_GEAR_TEETH     42
+#define GEARBOX_GEAR_RATIO    0.04 //25 revs on input shaft --> 1 rev on output shaft
+
 #define BUFFER_INDEX_AZ_HUNDRED 0
 #define BUFFER_INDEX_AZ_TEN 1
 #define BUFFER_INDEX_AZ_ONE 2
@@ -30,8 +35,10 @@ const boolean NEGATIVE_POLARITY   = 0;
 float desired_azimuth = 0.0;
 float desired_elevation = 0.0;
 
-volatile byte step_number = 1;
+volatile byte phase_number = 1;
+volatile int step_number = 0;
 boolean stepper_motor_enabled = false;
+int steps_per_antenna_rev;
 
 const byte buffer_size = 7;
 char received_buffer[buffer_size];
@@ -64,6 +71,15 @@ void setupPins()
   digitalWrite(STEPPER_ENABLE2, LOW);
   digitalWrite(STEPPER_IN2_1, HIGH);
   digitalWrite(STEPPER_IN2_2, LOW);
+}
+
+int calculateStepsPerRev(int steps_per_stepper_rev, int num_stepper_teeth, int num_driven_teeth, float gearbox_gear_ratio)
+{
+  
+  float belt_system_gear_ratio = (float) num_stepper_teeth / num_driven_teeth; 
+  int steps_per_driven_rev = steps_per_stepper_rev / belt_system_gear_ratio;
+  int steps_per_rev = steps_per_driven_rev * (float)(1/gearbox_gear_ratio);
+  return steps_per_rev;
 }
 
 void enableLinearActuator()
@@ -121,20 +137,20 @@ void setMotorPolarity(byte A_polarity, byte B_polarity, byte not_A_polarity, byt
   }
 }
 
-void rotateStepperOneStep(int rotation_direction)
+void rotateStepperOneStep(int rotation_clockwise)
 {
   if(!stepper_motor_enabled) enableStepperMotor();
   if(rotation_clockwise)
   {
-    step_number++;
-    if(step_number > 4) step_number = 1;
+    phase_number++;
+    if(phase_number > 4) phase_number = 1;
   }
   else
   {
-    step_number--;
-    if(step_number < 1) step_number = 4;
+    phase_number--;
+    if(phase_number < 1) phase_number = 4;
   }
-  switch(step_number)
+  switch(phase_number)
   {
     case 1:
       setMotorPolarity(POSITIVE_POLARITY, POSITIVE_POLARITY, NEGATIVE_POLARITY, NEGATIVE_POLARITY);
@@ -208,6 +224,7 @@ void setup()
   // put your setup code here, to run once:
   Serial.begin(115200);
   setupPins();
+  steps_per_antenna_rev = calculateStepsPerRev(STEPS_PER_STEPPER_REV, STEPPER_TEETH, DRIVEN_GEAR_TEETH, GEARBOX_GEAR_RATIO);
 }
 
 void loop() 

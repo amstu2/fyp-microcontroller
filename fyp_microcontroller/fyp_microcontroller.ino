@@ -1,5 +1,9 @@
 // TODO: MAKE SURE STEPPER MOTOR CONNECTIONS ARE CORRECT
 // ASSUMED STEPPER IN RAIL 1 IS A/NOT_A
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BNO055.h>
+#include <utility/imumaths.h>
 
 #define LED_PIN           13
 #define STEPPER_ENABLE1   4
@@ -32,8 +36,10 @@ const boolean CLOCKWISE           = 0;
 const boolean POSITIVE_POLARITY   = 1;
 const boolean NEGATIVE_POLARITY   = 0;
 
+const uint16_t IMU_SAMPLERATE_DELAY = 100;
 float desired_azimuth = 0.0;
 float desired_elevation = 0.0;
+double antenna_orientation_x, antenna_orientation_y, antenna_orientation_z;
 
 volatile byte phase_number = 1;
 volatile int step_number = 0;
@@ -48,6 +54,7 @@ boolean message_being_received = false;
 const char start_char = '<';
 const char end_char = '>';
 
+Adafruit_BNO055 IMU = Adafruit_BNO055(55, 0x28);
 void setupPins()
 {
   pinMode(LED_PIN,OUTPUT);
@@ -71,6 +78,28 @@ void setupPins()
   digitalWrite(STEPPER_ENABLE2, LOW);
   digitalWrite(STEPPER_IN2_1, HIGH);
   digitalWrite(STEPPER_IN2_2, LOW);
+}
+
+void setupIMU()
+{
+  Serial.println("Initialising IMU...");
+  if(!IMU.begin()) digitalWrite(LED_PIN, HIGH);
+  delay(1000);
+}
+
+void getAntennaOrientation()
+{
+  sensors_event_t orientationData;
+  IMU.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
+  setAntennaOrientation(&orientationData);
+}
+
+void setAntennaOrientation(sensors_event_t* event)
+{
+  
+  antenna_orientation_x = event->orientation.x;
+  antenna_orientation_y = -1*(event->orientation.y);
+  antenna_orientation_z = event->orientation.z;
 }
 
 int calculateStepsPerRev(int steps_per_stepper_rev, int num_stepper_teeth, int num_driven_teeth, float gearbox_gear_ratio)
@@ -224,6 +253,8 @@ void setup()
   // put your setup code here, to run once:
   Serial.begin(115200);
   setupPins();
+  setupIMU();
+  getElevationRange();
   steps_per_antenna_rev = calculateStepsPerRev(STEPS_PER_STEPPER_REV, STEPPER_TEETH, DRIVEN_GEAR_TEETH, GEARBOX_GEAR_RATIO);
 }
 

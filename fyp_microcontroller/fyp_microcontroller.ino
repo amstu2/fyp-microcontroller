@@ -15,8 +15,10 @@
 #define LINEAR_ACT_ENABLE 10
 #define LINEAR_ACT_IN1    11
 #define LINEAR_ACT_IN2    12
-
 #define LINEAR_POT        A3
+
+#define MAX_ELEVATION_RANGING_SAMPLES 150
+#define ELEVATION_RANGING_TOLERANCE   0.1
 
 #define STEPS_PER_STEPPER_REV 200
 #define STEPPER_TEETH         10
@@ -37,9 +39,13 @@ const boolean POSITIVE_POLARITY   = 1;
 const boolean NEGATIVE_POLARITY   = 0;
 
 const uint16_t IMU_SAMPLERATE_DELAY = 100;
+
+
 float desired_azimuth = 0.0;
 float desired_elevation = 0.0;
 double antenna_orientation_x, antenna_orientation_y, antenna_orientation_z;
+float min_elevation = 1000;
+float max_elevation = -1000;
 
 volatile byte phase_number = 1;
 volatile int step_number = 0;
@@ -55,6 +61,7 @@ const char start_char = '<';
 const char end_char = '>';
 
 Adafruit_BNO055 IMU = Adafruit_BNO055(55, 0x28);
+
 void setupPins()
 {
   pinMode(LED_PIN,OUTPUT);
@@ -128,6 +135,67 @@ void retractLinearActuator()
   enableLinearActuator();
   digitalWrite(LINEAR_ACT_IN1, LOW);
   digitalWrite(LINEAR_ACT_IN2, HIGH);
+}
+
+void getElevationRange()
+{
+  boolean min_elevation_found = false;
+  boolean max_elevation_found = false;
+  byte confirmed_count = 0;
+  byte num_of_samples = 0;
+  enableLinearActuator();
+  extendLinearActuator();
+  while(!min_elevation_found && (num_of_samples < MAX_ELEVATION_RANGING_SAMPLES))
+  {
+    getAntennaOrientation();
+    Serial.println(antenna_orientation_y);
+    if((antenna_orientation_y > (min_elevation-ELEVATION_RANGING_TOLERANCE)) && (antenna_orientation_y < (min_elevation+ELEVATION_RANGING_TOLERANCE)))
+    {
+     confirmed_count++;
+     Serial.println("CONF");
+     Serial.println(min_elevation);
+     Serial.println(antenna_orientation_y);
+     Serial.println((antenna_orientation_y > (min_elevation-ELEVATION_RANGING_TOLERANCE)));
+     Serial.println((antenna_orientation_y < (min_elevation+ELEVATION_RANGING_TOLERANCE)));
+     Serial.println("");
+     if(confirmed_count > 5) 
+     {
+      min_elevation_found = true; 
+      Serial.println("MIN FOUND");
+     }
+    }
+    else
+    {
+      min_elevation = antenna_orientation_y;
+      confirmed_count = 0;
+    }
+    num_of_samples++;
+    delay(IMU_SAMPLERATE_DELAY);
+  }
+  confirmed_count = 0;
+  num_of_samples = 0;
+  retractLinearActuator();
+  while(!max_elevation_found && (num_of_samples < MAX_ELEVATION_RANGING_SAMPLES))
+  {
+    getAntennaOrientation();
+    Serial.println(antenna_orientation_y);
+    if((antenna_orientation_y > (max_elevation-ELEVATION_RANGING_TOLERANCE)) && (antenna_orientation_y < (max_elevation+ELEVATION_RANGING_TOLERANCE)))
+    {
+     confirmed_count++;
+     if(confirmed_count > 5) 
+     {
+       max_elevation_found = true;
+       Serial.println("MAX FOUND"); 
+     } 
+    }
+    else
+    {
+      max_elevation = antenna_orientation_y;
+      confirmed_count = 0;
+    }
+    num_of_samples++;
+    delay(IMU_SAMPLERATE_DELAY);
+  }
 }
 
 void disableLinearActuator()

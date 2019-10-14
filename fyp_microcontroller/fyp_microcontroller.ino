@@ -19,6 +19,7 @@
 
 #define MAX_ELEVATION_RANGING_SAMPLES 150
 #define ELEVATION_RANGING_TOLERANCE   0.1
+#define OFFSET_ORIENTATION_Y          0
 
 #define STEPS_PER_STEPPER_REV 200
 #define STEPPER_TEETH         10
@@ -39,13 +40,19 @@ const boolean POSITIVE_POLARITY   = 1;
 const boolean NEGATIVE_POLARITY   = 0;
 
 const uint16_t IMU_SAMPLERATE_DELAY = 100;
+unsigned long prev_IMU_sample = millis();
 
 
 float desired_azimuth = 0.0;
 float desired_elevation = 0.0;
+int desired_elevation_pit = 0;
 double antenna_orientation_x, antenna_orientation_y, antenna_orientation_z;
+boolean elevation_achieved = false;
+boolean azimuth_achieved = false;
+
 float min_elevation = 1000;
 float max_elevation = -1000;
+int min_pot_value, max_pot_value;
 
 volatile byte phase_number = 1;
 volatile int step_number = 0;
@@ -68,12 +75,14 @@ void setupPins()
   pinMode(LINEAR_ACT_ENABLE,OUTPUT); 
   pinMode(LINEAR_ACT_IN1,OUTPUT); 
   pinMode(LINEAR_ACT_IN2,OUTPUT);
+  pinMode(LINEAR_POT, INPUT);
   pinMode(STEPPER_ENABLE1,OUTPUT);
   pinMode(STEPPER_IN1_1,OUTPUT);
   pinMode(STEPPER_IN1_2,OUTPUT);
   pinMode(STEPPER_ENABLE2,OUTPUT);
   pinMode(STEPPER_IN2_1,OUTPUT);
   pinMode(STEPPER_IN2_2,OUTPUT);
+  
 
   digitalWrite(LED_PIN, LOW);
   digitalWrite(LINEAR_ACT_ENABLE, LOW);
@@ -94,6 +103,12 @@ void setupIMU()
   delay(1000);
 }
 
+boolean IMUReady(unsigned long prev_time)
+{
+  if((millis()-prev_time) >= IMU_SAMPLERATE_DELAY) return true;
+  else return false;
+}
+
 void getAntennaOrientation()
 {
   sensors_event_t orientationData;
@@ -105,7 +120,7 @@ void setAntennaOrientation(sensors_event_t* event)
 {
   
   antenna_orientation_x = event->orientation.x;
-  antenna_orientation_y = -1*(event->orientation.y);
+  antenna_orientation_y = (-1*(event->orientation.y) + OFFSET_ORIENTATION_Y);
   antenna_orientation_z = event->orientation.z;
 }
 
@@ -118,9 +133,9 @@ int calculateStepsPerRev(int steps_per_stepper_rev, int num_stepper_teeth, int n
   return steps_per_rev;
 }
 
-void enableLinearActuator()
+void setLinearActuatorSpeed(unsigned int duty_cycle)
 {
-  digitalWrite(LINEAR_ACT_ENABLE, HIGH);
+  analogWrite(LINEAR_ACT_ENABLE, map(duty_cycle,0,100,0,255));
 }
 
 void extendLinearActuator()
@@ -143,30 +158,24 @@ void getElevationRange()
   boolean max_elevation_found = false;
   byte confirmed_count = 0;
   byte num_of_samples = 0;
-  enableLinearActuator();
+  setLinearActuatorSpeed(100);
   extendLinearActuator();
   while(!min_elevation_found && (num_of_samples < MAX_ELEVATION_RANGING_SAMPLES))
   {
     getAntennaOrientation();
-    Serial.println(antenna_orientation_y);
+    Serial.println(analogRead(LINEAR_POT));
     if((antenna_orientation_y > (min_elevation-ELEVATION_RANGING_TOLERANCE)) && (antenna_orientation_y < (min_elevation+ELEVATION_RANGING_TOLERANCE)))
     {
      confirmed_count++;
-     Serial.println("CONF");
-     Serial.println(min_elevation);
-     Serial.println(antenna_orientation_y);
-     Serial.println((antenna_orientation_y > (min_elevation-ELEVATION_RANGING_TOLERANCE)));
-     Serial.println((antenna_orientation_y < (min_elevation+ELEVATION_RANGING_TOLERANCE)));
-     Serial.println("");
      if(confirmed_count > 5) 
      {
       min_elevation_found = true; 
-      Serial.println("MIN FOUND");
      }
     }
     else
     {
       min_elevation = antenna_orientation_y;
+      min_pot_value = analogRead(LINEAR_POT);
       confirmed_count = 0;
     }
     num_of_samples++;
@@ -178,19 +187,19 @@ void getElevationRange()
   while(!max_elevation_found && (num_of_samples < MAX_ELEVATION_RANGING_SAMPLES))
   {
     getAntennaOrientation();
-    Serial.println(antenna_orientation_y);
+    Serial.println(analogRead(LINEAR_POT));
     if((antenna_orientation_y > (max_elevation-ELEVATION_RANGING_TOLERANCE)) && (antenna_orientation_y < (max_elevation+ELEVATION_RANGING_TOLERANCE)))
     {
      confirmed_count++;
      if(confirmed_count > 5) 
      {
        max_elevation_found = true;
-       Serial.println("MAX FOUND"); 
      } 
     }
     else
     {
       max_elevation = antenna_orientation_y;
+      max_pot_value = analogRead(LINEAR_POT);
       confirmed_count = 0;
     }
     num_of_samples++;
@@ -198,9 +207,30 @@ void getElevationRange()
   }
 }
 
+int mapElevationToPotVal(float elevation)
+{
+  return map(elevation, min_elevation, max_elevation, min_pot_value, max_pot_value);
+}
+
+void elevationControl()
+{
+
+}
+
+
+boolean elevationFound()
+{
+  if((antenna_orientation_y > (desired_elevation-ELEVATION_RANGING_TOLERANCE)) && (antenna_orientation_y < (desired_elevation+ELEVATION_RANGING_TOLERANCE)))
+  {
+    return true;
+  }
+  else return false;
+}
+
 void disableLinearActuator()
 {
   digitalWrite(LINEAR_ACT_ENABLE, LOW);
+  Serial.println("LA DISABLED");
 }
 
 void enableStepperMotor()
@@ -323,18 +353,32 @@ void setup()
   setupPins();
   setupIMU();
   getElevationRange();
+  Serial.println(min_elevation);
+  Serial.println(max_elevation);
   steps_per_antenna_rev = calculateStepsPerRev(STEPS_PER_STEPPER_REV, STEPPER_TEETH, DRIVEN_GEAR_TEETH, GEARBOX_GEAR_RATIO);
 }
 
 void loop() 
 {
-  // put your main code here, to run repeatedly:
   checkUARTRecv();
   if(new_command_received) {
     parseReceivedData();
-    //Serial.println(desired_azimuth);
-    //Serial.println(desired_elevation);   
+    moveToElevation();
   }
-  
+  if(millis()-prev_IMU_sample >= IMU_SAMPLERATE_DELAY)
+  {
+    getAntennaOrientation();
+    if(elevationFound())
+    {
+      elevation_achieved = true;
+      disableLinearActuator();
+    }
+  }
+  //for (int i = 0; i < steps_per_antenna_rev; i++) {
+  //  rotateStepperOneStep(CLOCKWISE);
+   // delay(3);
+  //}
+  //delay(1000);
+  //getAntennaOrientation();
   
 }

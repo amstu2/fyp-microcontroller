@@ -1,9 +1,15 @@
 // TODO: MAKE SURE STEPPER MOTOR CONNECTIONS ARE CORRECT
 // ASSUMED STEPPER IN RAIL 1 IS A/NOT_A
+// TODO: MAKE VARIABLES STATIC
+
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
+
+#define KP  1.0
+#define KI  0.01
+#define KD  0.001
 
 #define LED_PIN           13
 #define STEPPER_ENABLE1   4
@@ -17,14 +23,18 @@
 #define LINEAR_ACT_IN2    12
 #define LINEAR_POT        A3
 
-#define MAX_ELEVATION_RANGING_SAMPLES 150
-#define ELEVATION_RANGING_TOLERANCE   0.1
+#define MAX_ELEVATION_RANGING_SAMPLES 1500
+#define ELEVATION_RANGING_TOLERANCE   2
 #define OFFSET_ORIENTATION_Y          0
+#define ELEVATION_CONFIRMED_LIMIT     30
 
 #define STEPS_PER_STEPPER_REV 200
 #define STEPPER_TEETH         10
 #define DRIVEN_GEAR_TEETH     42
 #define GEARBOX_GEAR_RATIO    0.04 //25 revs on input shaft --> 1 rev on output shaft
+
+#define CONTROL_INTERVAL      10 
+#define STEPPER_PHASE_DELAY   3
 
 #define BUFFER_INDEX_AZ_HUNDRED 0
 #define BUFFER_INDEX_AZ_TEN 1
@@ -40,21 +50,29 @@ const boolean POSITIVE_POLARITY   = 1;
 const boolean NEGATIVE_POLARITY   = 0;
 
 const uint16_t IMU_SAMPLERATE_DELAY = 100;
-unsigned long prev_IMU_sample = millis();
+unsigned long prev_control_time = millis();
+unsigned long prev_step_time = millis();
+unsigned long current_time = millis();
+volatile byte imu_sample_counter = 0;
+const float dt = (CONTROL_INTERVAL/1000.0);
 
 
 float desired_azimuth = 0.0;
 float desired_elevation = 0.0;
-int desired_elevation_pit = 0;
+int desired_elevation_pot = 0;
 double antenna_orientation_x, antenna_orientation_y, antenna_orientation_z;
 boolean elevation_achieved = false;
 boolean azimuth_achieved = false;
+float elevation_integral_term = 0.0;
+float elevation_derivative_term = 0.0;
+float prev_elevation_error = 0.0;
 
 float min_elevation = 1000;
 float max_elevation = -1000;
 int min_pot_value, max_pot_value;
 
 volatile byte phase_number = 1;
+int desired_step_number = 0;
 volatile int step_number = 0;
 boolean stepper_motor_enabled = false;
 int steps_per_antenna_rev;
@@ -140,14 +158,12 @@ void setLinearActuatorSpeed(unsigned int duty_cycle)
 
 void extendLinearActuator()
 {
-  enableLinearActuator();
   digitalWrite(LINEAR_ACT_IN1, HIGH);
   digitalWrite(LINEAR_ACT_IN2, LOW);
 }
 
 void retractLinearActuator()
 {
-  enableLinearActuator();
   digitalWrite(LINEAR_ACT_IN1, LOW);
   digitalWrite(LINEAR_ACT_IN2, HIGH);
 }
@@ -157,53 +173,63 @@ void getElevationRange()
   boolean min_elevation_found = false;
   boolean max_elevation_found = false;
   byte confirmed_count = 0;
-  byte num_of_samples = 0;
+  int num_of_samples = 0;
+  unsigned int pot_val;
+  unsigned int prev_pot_val = 2000;
   setLinearActuatorSpeed(100);
   extendLinearActuator();
+  delay(500);
   while(!min_elevation_found && (num_of_samples < MAX_ELEVATION_RANGING_SAMPLES))
   {
-    getAntennaOrientation();
-    Serial.println(analogRead(LINEAR_POT));
-    if((antenna_orientation_y > (min_elevation-ELEVATION_RANGING_TOLERANCE)) && (antenna_orientation_y < (min_elevation+ELEVATION_RANGING_TOLERANCE)))
+    pot_val = analogRead(LINEAR_POT);
+    if((pot_val < (prev_pot_val+ELEVATION_RANGING_TOLERANCE)) && (pot_val > (prev_pot_val-ELEVATION_RANGING_TOLERANCE)))
     {
      confirmed_count++;
-     if(confirmed_count > 5) 
+     if(confirmed_count > ELEVATION_CONFIRMED_LIMIT) 
      {
-      min_elevation_found = true; 
+      delay(IMU_SAMPLERATE_DELAY);
+      getAntennaOrientation();
+      min_elevation = antenna_orientation_y;
+      min_pot_value = pot_val;
+      min_elevation_found = true;
      }
     }
     else
     {
-      min_elevation = antenna_orientation_y;
-      min_pot_value = analogRead(LINEAR_POT);
+      prev_pot_val = pot_val;
       confirmed_count = 0;
     }
     num_of_samples++;
-    delay(IMU_SAMPLERATE_DELAY);
+    delay(10);
   }
   confirmed_count = 0;
   num_of_samples = 0;
+  prev_pot_val = 2000;
+  setLinearActuatorSpeed(100);
   retractLinearActuator();
+  delay(500);
   while(!max_elevation_found && (num_of_samples < MAX_ELEVATION_RANGING_SAMPLES))
   {
-    getAntennaOrientation();
-    Serial.println(analogRead(LINEAR_POT));
-    if((antenna_orientation_y > (max_elevation-ELEVATION_RANGING_TOLERANCE)) && (antenna_orientation_y < (max_elevation+ELEVATION_RANGING_TOLERANCE)))
+    pot_val = analogRead(LINEAR_POT);
+    if((pot_val < (prev_pot_val+ELEVATION_RANGING_TOLERANCE)) && (pot_val > (prev_pot_val-ELEVATION_RANGING_TOLERANCE)))
     {
      confirmed_count++;
-     if(confirmed_count > 5) 
+     if(confirmed_count > ELEVATION_CONFIRMED_LIMIT) 
      {
-       max_elevation_found = true;
-     } 
+      delay(IMU_SAMPLERATE_DELAY);
+      getAntennaOrientation();
+      max_elevation = antenna_orientation_y;
+      max_pot_value = pot_val;
+      max_elevation_found = true;
+     }
     }
     else
     {
-      max_elevation = antenna_orientation_y;
-      max_pot_value = analogRead(LINEAR_POT);
+      prev_pot_val = pot_val;
       confirmed_count = 0;
     }
     num_of_samples++;
-    delay(IMU_SAMPLERATE_DELAY);
+    delay(10);
   }
 }
 
@@ -212,31 +238,61 @@ int mapElevationToPotVal(float elevation)
   return map(elevation, min_elevation, max_elevation, min_pot_value, max_pot_value);
 }
 
-void elevationControl()
+void elevationControlLoop()
 {
-
-}
-
-
-boolean elevationFound()
-{
-  if((antenna_orientation_y > (desired_elevation-ELEVATION_RANGING_TOLERANCE)) && (antenna_orientation_y < (desired_elevation+ELEVATION_RANGING_TOLERANCE)))
+  int current_position = analogRead(LINEAR_POT);
+  float current_error = (float)(desired_elevation_pot - current_position);
+  int duty_cycle = (KP * current_error) + (KI * elevation_integral_term) + (KD * elevation_derivative_term);
+  if(duty_cycle > 100)
   {
-    return true;
+    duty_cycle = 100;
   }
-  else return false;
+  else if(duty_cycle < -100)
+  {
+    duty_cycle = -100;
+  }
+  else 
+  {
+    elevation_integral_term += (current_error * dt);
+    if(elevation_integral_term > 100.0) elevation_integral_term = 100.0;
+    else if(elevation_integral_term < 100.0) elevation_integral_term = -100.0;
+  }
+  elevation_derivative_term = (current_error - prev_elevation_error)/dt;
+  prev_elevation_error = current_error;
+
+  //Serial.print("desired ");
+  //Serial.print(desired_elevation_pot);
+  //Serial.print(" current ");
+  //Serial.print(current_position);
+  //Serial.print(" duty ");
+  //Serial.print(duty_cycle);
+  //Serial.print(" current_error ");
+  //Serial.print(current_error);
+  //Serial.print(" integral ");
+  //Serial.println(elevation_integral_term);
+  if(duty_cycle<0)
+  {
+    setLinearActuatorSpeed(abs(duty_cycle));
+    extendLinearActuator();
+  }
+  else
+  {
+    setLinearActuatorSpeed(duty_cycle);
+    retractLinearActuator();
+  }
 }
+
 
 void disableLinearActuator()
 {
-  digitalWrite(LINEAR_ACT_ENABLE, LOW);
-  Serial.println("LA DISABLED");
+  setLinearActuatorSpeed(0);
 }
 
 void enableStepperMotor()
 {
-  digitalWrite(STEPPER_ENABLE1, HIGH);
-  digitalWrite(STEPPER_ENABLE2, HIGH);
+  
+  //digitalWrite(STEPPER_ENABLE1, HIGH);
+  //digitalWrite(STEPPER_ENABLE2, HIGH);
   stepper_motor_enabled = true;
 }
 
@@ -352,26 +408,40 @@ void setup()
   Serial.begin(115200);
   setupPins();
   setupIMU();
-  getElevationRange();
-  Serial.println(min_elevation);
-  Serial.println(max_elevation);
+  //getElevationRange();
+  //desired_elevation_pot = mapElevationToPotVal(0.0);
   steps_per_antenna_rev = calculateStepsPerRev(STEPS_PER_STEPPER_REV, STEPPER_TEETH, DRIVEN_GEAR_TEETH, GEARBOX_GEAR_RATIO);
 }
 
 void loop() 
 {
   checkUARTRecv();
+  current_time = millis();
+  
   if(new_command_received) {
     parseReceivedData();
-    moveToElevation();
+    desired_elevation_pot = mapElevationToPotVal(desired_elevation);
+    desired_step_number = calculateNewDesiredStep(desired_azimuth, step_number);
   }
-  if(millis()-prev_IMU_sample >= IMU_SAMPLERATE_DELAY)
+  
+  if((current_time - prev_control_time) >= CONTROL_INTERVAL)
   {
-    getAntennaOrientation();
-    if(elevationFound())
+    prev_control_time = current_time;
+    //elevationControlLoop();
+    imu_sample_counter++;
+    if(imu_sample_counter == (IMU_SAMPLERATE_DELAY/CONTROL_INTERVAL))
     {
-      elevation_achieved = true;
-      disableLinearActuator();
+      imu_sample_counter = 0;
+      getAntennaOrientation();
+      Serial.println("");
+      Serial.println(desired_step_number);
+      Serial.println(step_number);
+      Serial.println("");
+    }
+    if((current_time - prev_step_time) >= STEPPER_PHASE_DELAY)
+    {
+      updateStepper();
+      prev_step_time = current_time;
     }
   }
   //for (int i = 0; i < steps_per_antenna_rev; i++) {

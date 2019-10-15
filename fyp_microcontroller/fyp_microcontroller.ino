@@ -322,6 +322,7 @@ void setMotorPolarity(byte A_polarity, byte B_polarity, byte not_A_polarity, byt
 
 void rotateStepperOneStep(int rotation_clockwise)
 {
+
   if(!stepper_motor_enabled) enableStepperMotor();
   if(rotation_clockwise)
   {
@@ -348,8 +349,36 @@ void rotateStepperOneStep(int rotation_clockwise)
       setMotorPolarity(POSITIVE_POLARITY, NEGATIVE_POLARITY, NEGATIVE_POLARITY, POSITIVE_POLARITY);
       break;
   }
+  step_number++;
   
-  
+}
+
+int calculateNewDesiredStep(float bearing, int current_step)
+{
+  int CW_bearing_step = map((int)(bearing*10.0), 0, 3600, 0, 21000);
+  int ACW_bearing_step = map((int)((bearing-360.0)*10.0), 0, -3600, 0, -21000);
+  int ACW_step_difference = abs((ACW_bearing_step - current_step));
+  int CW_step_difference = abs((CW_bearing_step - current_step));
+  if(ACW_step_difference < CW_step_difference)
+  {
+    return ACW_bearing_step;
+  }
+  else
+  {
+    return CW_bearing_step;
+  }
+}
+
+void updateStepper()
+{
+  if(desired_step_number < step_number)
+  {
+    rotateStepperOneStep(ANTICLOCKWISE);
+  }
+  else if(desired_step_number > step_number)
+  {
+    rotateStepperOneStep(CLOCKWISE);
+  }
 }
 
 void disableStepperMotor()

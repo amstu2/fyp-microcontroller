@@ -241,8 +241,8 @@ int mapElevationToPotVal(float elevation)
 void elevationControlLoop()
 {
   int current_position = analogRead(LINEAR_POT);
-  float current_error = (float)(desired_elevation_pot - current_position);
-  int duty_cycle = (KP * current_error) + (KI * elevation_integral_term) + (KD * elevation_derivative_term);
+  float current_error = (float)(desired_elevation_pot - current_position); 
+  int duty_cycle = (KP * current_error) + (KI * elevation_integral_term);
   if(duty_cycle > 100)
   {
     duty_cycle = 100;
@@ -255,10 +255,8 @@ void elevationControlLoop()
   {
     elevation_integral_term += (current_error * dt);
     if(elevation_integral_term > 100.0) elevation_integral_term = 100.0;
-    else if(elevation_integral_term < 100.0) elevation_integral_term = -100.0;
+    else if(elevation_integral_term < -100.0) elevation_integral_term = -100.0;
   }
-  elevation_derivative_term = (current_error - prev_elevation_error)/dt;
-  prev_elevation_error = current_error;
 
   //Serial.print("desired ");
   //Serial.print(desired_elevation_pot);

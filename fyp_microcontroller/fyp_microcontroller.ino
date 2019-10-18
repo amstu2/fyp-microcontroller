@@ -7,9 +7,9 @@
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 
-#define KP  1.0
-#define KI  0.01
-#define KD  0.001
+#define KP  0.2
+#define KI  0.001
+#define KD  0.0001
 
 #define LED_PIN           13
 #define STEPPER_ENABLE1   4

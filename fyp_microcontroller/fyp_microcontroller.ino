@@ -67,8 +67,7 @@ float elevation_integral_term = 0.0;
 float elevation_derivative_term = 0.0;
 float prev_elevation_error = 0.0;
 
-float min_elevation = 1000;
-float max_elevation = -1000;
+float min_elevation, max_elevation;
 int min_pot_value, max_pot_value;
 
 volatile byte phase_number = 1;
@@ -76,6 +75,7 @@ int desired_step_number = 0;
 volatile int step_number = 0;
 boolean stepper_motor_enabled = false;
 int steps_per_antenna_rev;
+byte stepper_counter = 0;
 
 const byte buffer_size = 7;
 char received_buffer[buffer_size];
@@ -187,11 +187,17 @@ void getElevationRange()
      confirmed_count++;
      if(confirmed_count > ELEVATION_CONFIRMED_LIMIT) 
      {
-      delay(IMU_SAMPLERATE_DELAY);
-      getAntennaOrientation();
-      min_elevation = antenna_orientation_y;
+      min_elevation = 0.00;
       min_pot_value = pot_val;
+      for(int i = 0; i < 10; i++)
+      {
+        delay(IMU_SAMPLERATE_DELAY);
+        getAntennaOrientation();
+        min_elevation += antenna_orientation_y;
+      }
+      min_elevation = min_elevation/10.0;
       min_elevation_found = true;
+      Serial.println(min_elevation);
      }
     }
     else
@@ -216,11 +222,17 @@ void getElevationRange()
      confirmed_count++;
      if(confirmed_count > ELEVATION_CONFIRMED_LIMIT) 
      {
-      delay(IMU_SAMPLERATE_DELAY);
-      getAntennaOrientation();
-      max_elevation = antenna_orientation_y;
+      max_elevation = 0.00;
       max_pot_value = pot_val;
+      for(int i = 0; i < 10; i++)
+      {
+        delay(IMU_SAMPLERATE_DELAY);
+        getAntennaOrientation();
+        max_elevation += antenna_orientation_y;
+      }
+      max_elevation = max_elevation/10.0;
       max_elevation_found = true;
+      Serial.println(max_elevation);
      }
     }
     else

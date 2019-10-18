@@ -303,6 +303,8 @@ void enableStepperMotor()
   
   //digitalWrite(STEPPER_ENABLE1, HIGH);
   //digitalWrite(STEPPER_ENABLE2, HIGH);
+  analogWrite(STEPPER_ENABLE1, 150);
+  analogWrite(STEPPER_ENABLE2, 150);
   stepper_motor_enabled = true;
 }
 
@@ -337,11 +339,13 @@ void rotateStepperOneStep(int rotation_clockwise)
   if(rotation_clockwise)
   {
     phase_number++;
+    step_number--;
     if(phase_number > 4) phase_number = 1;
   }
   else
   {
     phase_number--;
+    step_number++;
     if(phase_number < 1) phase_number = 4;
   }
   switch(phase_number)
@@ -359,7 +363,6 @@ void rotateStepperOneStep(int rotation_clockwise)
       setMotorPolarity(POSITIVE_POLARITY, NEGATIVE_POLARITY, NEGATIVE_POLARITY, POSITIVE_POLARITY);
       break;
   }
-  step_number++;
   
 }
 
@@ -389,12 +392,16 @@ void updateStepper()
   {
     rotateStepperOneStep(CLOCKWISE);
   }
+  else
+  {
+    disableStepperMotor();
+  }
 }
 
 void disableStepperMotor()
 {
-  digitalWrite(STEPPER_ENABLE1, LOW);
-  digitalWrite(STEPPER_ENABLE2, LOW);
+  analogWrite(STEPPER_ENABLE1, 0);
+  analogWrite(STEPPER_ENABLE2, 0);
   stepper_motor_enabled = false;
 }
 
@@ -441,14 +448,29 @@ void parseReceivedData()
   new_command_received = false;
 }
 
+SIGNAL(TIMER0_COMPA_vect) 
+{
+  if(stepper_counter == STEPPER_PHASE_DELAY)
+  {
+    updateStepper();
+    stepper_counter = 0;
+  }
+  else
+  {
+    stepper_counter++;
+  }
+}
+
 void setup() 
 {
   // put your setup code here, to run once:
   Serial.begin(115200);
+  OCR0A = 0xAF;
+  TIMSK0 |= _BV(OCIE0A); 
   setupPins();
   setupIMU();
-  //getElevationRange();
-  //desired_elevation_pot = mapElevationToPotVal(0.0);
+  getElevationRange();
+  desired_elevation_pot = mapElevationToPotVal(0.0);
   steps_per_antenna_rev = calculateStepsPerRev(STEPS_PER_STEPPER_REV, STEPPER_TEETH, DRIVEN_GEAR_TEETH, GEARBOX_GEAR_RATIO);
 }
 
@@ -466,28 +488,13 @@ void loop()
   if((current_time - prev_control_time) >= CONTROL_INTERVAL)
   {
     prev_control_time = current_time;
-    //elevationControlLoop();
+    elevationControlLoop();
     imu_sample_counter++;
     if(imu_sample_counter == (IMU_SAMPLERATE_DELAY/CONTROL_INTERVAL))
     {
       imu_sample_counter = 0;
       getAntennaOrientation();
-      Serial.println("");
-      Serial.println(desired_step_number);
-      Serial.println(step_number);
-      Serial.println("");
-    }
-    if((current_time - prev_step_time) >= STEPPER_PHASE_DELAY)
-    {
-      updateStepper();
-      prev_step_time = current_time;
     }
   }
-  //for (int i = 0; i < steps_per_antenna_rev; i++) {
-  //  rotateStepperOneStep(CLOCKWISE);
-   // delay(3);
-  //}
-  //delay(1000);
-  //getAntennaOrientation();
   
 }

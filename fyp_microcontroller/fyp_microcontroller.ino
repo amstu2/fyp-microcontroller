@@ -442,14 +442,40 @@ void checkUARTRecv()
   }
 }
 
+void resetBearing()
+{
+  disableStepperMotor();
+  step_number = 0;
+  desired_azimuth = 0.00;
+  desired_step_number = 0;
+}
+
 void executeCommand()
 {
   switch(received_buffer[BUFFER_INDEX_COMMAND])
   {
     case 'M':
       parseReceivedData();
+      if(desired_elevation > max_elevation)
+      {
+        desired_elevation = max_elevation;
+        Serial.println("ELE");
+      }
+      else if(desired_elevation < min_elevation)
+      {
+        desired_elevation = min_elevation;
+        Serial.println("ELE");
+      }
       desired_elevation_pot = mapElevationToPotVal(desired_elevation);
       desired_step_number = calculateNewDesiredStep(desired_azimuth, step_number);
+      Serial.println("AM");
+      break;
+    case 'R':
+      resetBearing();
+      Serial.println("AR");
+      break;
+    default:
+      Serial.println("EC");
       break;
   }
   

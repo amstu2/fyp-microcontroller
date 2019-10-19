@@ -69,6 +69,7 @@ float elevation_derivative_term = 0.0;
 float prev_elevation_error = 0.0;
 
 float min_elevation, max_elevation;
+int min_elevation_int, max_elevation_int;
 int min_pot_value, max_pot_value;
 
 volatile byte phase_number = 1;
@@ -117,7 +118,6 @@ void setupPins()
 
 void setupIMU()
 {
-  Serial.println("Initialising IMU...");
   if(!IMU.begin()) digitalWrite(LED_PIN, HIGH);
   delay(1000);
 }
@@ -198,7 +198,7 @@ void getElevationRange()
       }
       min_elevation = min_elevation/10.0;
       min_elevation_found = true;
-      Serial.println(min_elevation);
+      min_elevation_int = min_elevation * 100;
      }
     }
     else
@@ -233,7 +233,7 @@ void getElevationRange()
       }
       max_elevation = max_elevation/10.0;
       max_elevation_found = true;
-      Serial.println(max_elevation);
+      max_elevation_int = max_elevation * 100;
      }
     }
     else
@@ -248,8 +248,15 @@ void getElevationRange()
 
 int mapElevationToPotVal(float elevation)
 {
-  return map(elevation, min_elevation, max_elevation, min_pot_value, max_pot_value);
+  return map(elevation*100.0, min_elevation_int, max_elevation_int, min_pot_value, max_pot_value);
 }
+
+float mapPotValToElevation(int pot_value)
+{
+  int elevation_int = map(pot_value, min_pot_value, max_pot_value, min_elevation_int, max_elevation_int);
+  return elevation_int;
+}
+
 
 void elevationControlLoop()
 {

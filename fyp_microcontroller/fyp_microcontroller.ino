@@ -49,12 +49,14 @@ const boolean ANTICLOCKWISE       = 1;
 const boolean CLOCKWISE           = 0;
 const boolean POSITIVE_POLARITY   = 1;
 const boolean NEGATIVE_POLARITY   = 0;
+boolean setup_is_complete = false;
 
 const uint16_t IMU_SAMPLERATE_DELAY = 100;
 unsigned long prev_control_time = millis();
 unsigned long prev_step_time = millis();
 unsigned long current_time = millis();
 volatile byte imu_sample_counter = 0;
+byte serial_response_counter = 0;
 const float dt = (CONTROL_INTERVAL/1000.0);
 
 
@@ -80,6 +82,7 @@ int steps_per_antenna_rev;
 byte stepper_counter = 0;
 
 const byte buffer_size = 9;
+char transmit_buffer[20];
 char received_buffer[buffer_size];
 int buffer_index = 0;
 boolean new_command_received = false;
@@ -510,6 +513,9 @@ void setup()
   getElevationRange();
   desired_elevation_pot = mapElevationToPotVal(0.0);
   steps_per_antenna_rev = calculateStepsPerRev(STEPS_PER_STEPPER_REV, STEPPER_TEETH, DRIVEN_GEAR_TEETH, GEARBOX_GEAR_RATIO);
+  sprintf(transmit_buffer, "LM%dM%d", min_elevation_int, max_elevation_int);
+  Serial.println(transmit_buffer);
+  setup_is_complete = true;
 }
 
 void loop() 

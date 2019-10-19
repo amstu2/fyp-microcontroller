@@ -35,13 +35,15 @@
 #define CONTROL_INTERVAL      10 
 #define STEPPER_PHASE_DELAY   3
 
-#define BUFFER_INDEX_AZ_HUNDRED 0
-#define BUFFER_INDEX_AZ_TEN 1
-#define BUFFER_INDEX_AZ_ONE 2
-#define BUFFER_INDEX_AZ_DEC 3
-#define BUFFER_INDEX_EL_TEN 4
-#define BUFFER_INDEX_EL_ONE 5
-#define BUFFER_INDEX_EL_DEC 6
+#define BUFFER_INDEX_COMMAND    0
+#define BUFFER_INDEX_AZ_HUNDRED 1
+#define BUFFER_INDEX_AZ_TEN   2
+#define BUFFER_INDEX_AZ_ONE   3
+#define BUFFER_INDEX_AZ_DEC   4
+#define BUFFER_INDEX_EL_SIGN  5
+#define BUFFER_INDEX_EL_TEN   6
+#define BUFFER_INDEX_EL_ONE   7
+#define BUFFER_INDEX_EL_DEC   8
 
 const boolean ANTICLOCKWISE       = 1;
 const boolean CLOCKWISE           = 0;
@@ -76,7 +78,7 @@ boolean stepper_motor_enabled = false;
 int steps_per_antenna_rev;
 byte stepper_counter = 0;
 
-const byte buffer_size = 7;
+const byte buffer_size = 9;
 char received_buffer[buffer_size];
 int buffer_index = 0;
 boolean new_command_received = false;
@@ -440,11 +442,25 @@ void checkUARTRecv()
   }
 }
 
+void executeCommand()
+{
+  switch(received_buffer[BUFFER_INDEX_COMMAND])
+  {
+    case 'M':
+      parseReceivedData();
+      desired_elevation_pot = mapElevationToPotVal(desired_elevation);
+      desired_step_number = calculateNewDesiredStep(desired_azimuth, step_number);
+      break;
+  }
+  
+  new_command_received = false;  
+}
+
 void parseReceivedData() 
 {
   desired_azimuth = (float)((received_buffer[BUFFER_INDEX_AZ_HUNDRED]-'0')*100) +  (float)((received_buffer[BUFFER_INDEX_AZ_TEN]-'0')*10) + (float)((received_buffer[BUFFER_INDEX_AZ_ONE]-'0')) + (((float)(received_buffer[BUFFER_INDEX_AZ_DEC]-'0'))/10);
   desired_elevation = (float)((received_buffer[BUFFER_INDEX_EL_TEN]-'0')*10) + (float)((received_buffer[BUFFER_INDEX_EL_ONE]-'0')) + (((float)(received_buffer[BUFFER_INDEX_EL_DEC]-'0'))/10);
-  new_command_received = false;
+  if(received_buffer[BUFFER_INDEX_EL_SIGN] == '-') desired_elevation *= -1.0;
 }
 
 SIGNAL(TIMER0_COMPA_vect) 
@@ -479,9 +495,7 @@ void loop()
   current_time = millis();
   
   if(new_command_received) {
-    parseReceivedData();
-    desired_elevation_pot = mapElevationToPotVal(desired_elevation);
-    desired_step_number = calculateNewDesiredStep(desired_azimuth, step_number);
+    executeCommand();
   }
   
   if((current_time - prev_control_time) >= CONTROL_INTERVAL)

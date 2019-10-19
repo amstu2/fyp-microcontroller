@@ -7,9 +7,9 @@
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 
-#define KP  1.0
-#define KI  0.01
-#define KD  0.001
+#define KP  0.2
+#define KI  0.001
+#define KD  0.0001
 
 #define LED_PIN           13
 #define STEPPER_ENABLE1   4
@@ -67,8 +67,7 @@ float elevation_integral_term = 0.0;
 float elevation_derivative_term = 0.0;
 float prev_elevation_error = 0.0;
 
-float min_elevation = 1000;
-float max_elevation = -1000;
+float min_elevation, max_elevation;
 int min_pot_value, max_pot_value;
 
 volatile byte phase_number = 1;
@@ -76,6 +75,7 @@ int desired_step_number = 0;
 volatile int step_number = 0;
 boolean stepper_motor_enabled = false;
 int steps_per_antenna_rev;
+byte stepper_counter = 0;
 
 const byte buffer_size = 7;
 char received_buffer[buffer_size];
@@ -187,11 +187,17 @@ void getElevationRange()
      confirmed_count++;
      if(confirmed_count > ELEVATION_CONFIRMED_LIMIT) 
      {
-      delay(IMU_SAMPLERATE_DELAY);
-      getAntennaOrientation();
-      min_elevation = antenna_orientation_y;
+      min_elevation = 0.00;
       min_pot_value = pot_val;
+      for(int i = 0; i < 10; i++)
+      {
+        delay(IMU_SAMPLERATE_DELAY);
+        getAntennaOrientation();
+        min_elevation += antenna_orientation_y;
+      }
+      min_elevation = min_elevation/10.0;
       min_elevation_found = true;
+      Serial.println(min_elevation);
      }
     }
     else
@@ -216,11 +222,17 @@ void getElevationRange()
      confirmed_count++;
      if(confirmed_count > ELEVATION_CONFIRMED_LIMIT) 
      {
-      delay(IMU_SAMPLERATE_DELAY);
-      getAntennaOrientation();
-      max_elevation = antenna_orientation_y;
+      max_elevation = 0.00;
       max_pot_value = pot_val;
+      for(int i = 0; i < 10; i++)
+      {
+        delay(IMU_SAMPLERATE_DELAY);
+        getAntennaOrientation();
+        max_elevation += antenna_orientation_y;
+      }
+      max_elevation = max_elevation/10.0;
       max_elevation_found = true;
+      Serial.println(max_elevation);
      }
     }
     else
@@ -241,8 +253,8 @@ int mapElevationToPotVal(float elevation)
 void elevationControlLoop()
 {
   int current_position = analogRead(LINEAR_POT);
-  float current_error = (float)(desired_elevation_pot - current_position);
-  int duty_cycle = (KP * current_error) + (KI * elevation_integral_term) + (KD * elevation_derivative_term);
+  float current_error = (float)(desired_elevation_pot - current_position); 
+  int duty_cycle = (KP * current_error) + (KI * elevation_integral_term);
   if(duty_cycle > 100)
   {
     duty_cycle = 100;
@@ -255,10 +267,8 @@ void elevationControlLoop()
   {
     elevation_integral_term += (current_error * dt);
     if(elevation_integral_term > 100.0) elevation_integral_term = 100.0;
-    else if(elevation_integral_term < 100.0) elevation_integral_term = -100.0;
+    else if(elevation_integral_term < -100.0) elevation_integral_term = -100.0;
   }
-  elevation_derivative_term = (current_error - prev_elevation_error)/dt;
-  prev_elevation_error = current_error;
 
   //Serial.print("desired ");
   //Serial.print(desired_elevation_pot);
@@ -293,6 +303,8 @@ void enableStepperMotor()
   
   //digitalWrite(STEPPER_ENABLE1, HIGH);
   //digitalWrite(STEPPER_ENABLE2, HIGH);
+  analogWrite(STEPPER_ENABLE1, 150);
+  analogWrite(STEPPER_ENABLE2, 150);
   stepper_motor_enabled = true;
 }
 
@@ -322,15 +334,18 @@ void setMotorPolarity(byte A_polarity, byte B_polarity, byte not_A_polarity, byt
 
 void rotateStepperOneStep(int rotation_clockwise)
 {
+
   if(!stepper_motor_enabled) enableStepperMotor();
   if(rotation_clockwise)
   {
     phase_number++;
+    step_number--;
     if(phase_number > 4) phase_number = 1;
   }
   else
   {
     phase_number--;
+    step_number++;
     if(phase_number < 1) phase_number = 4;
   }
   switch(phase_number)
@@ -349,13 +364,44 @@ void rotateStepperOneStep(int rotation_clockwise)
       break;
   }
   
-  
+}
+
+int calculateNewDesiredStep(float bearing, int current_step)
+{
+  int CW_bearing_step = map((int)(bearing*10.0), 0, 3600, 0, 21000);
+  int ACW_bearing_step = map((int)((bearing-360.0)*10.0), 0, -3600, 0, -21000);
+  int ACW_step_difference = abs((ACW_bearing_step - current_step));
+  int CW_step_difference = abs((CW_bearing_step - current_step));
+  if(ACW_step_difference < CW_step_difference)
+  {
+    return ACW_bearing_step;
+  }
+  else
+  {
+    return CW_bearing_step;
+  }
+}
+
+void updateStepper()
+{
+  if(desired_step_number < step_number)
+  {
+    rotateStepperOneStep(ANTICLOCKWISE);
+  }
+  else if(desired_step_number > step_number)
+  {
+    rotateStepperOneStep(CLOCKWISE);
+  }
+  else
+  {
+    disableStepperMotor();
+  }
 }
 
 void disableStepperMotor()
 {
-  digitalWrite(STEPPER_ENABLE1, LOW);
-  digitalWrite(STEPPER_ENABLE2, LOW);
+  analogWrite(STEPPER_ENABLE1, 0);
+  analogWrite(STEPPER_ENABLE2, 0);
   stepper_motor_enabled = false;
 }
 
@@ -402,14 +448,29 @@ void parseReceivedData()
   new_command_received = false;
 }
 
+SIGNAL(TIMER0_COMPA_vect) 
+{
+  if(stepper_counter == STEPPER_PHASE_DELAY)
+  {
+    updateStepper();
+    stepper_counter = 0;
+  }
+  else
+  {
+    stepper_counter++;
+  }
+}
+
 void setup() 
 {
   // put your setup code here, to run once:
   Serial.begin(115200);
+  OCR0A = 0xAF;
+  TIMSK0 |= _BV(OCIE0A); 
   setupPins();
   setupIMU();
-  //getElevationRange();
-  //desired_elevation_pot = mapElevationToPotVal(0.0);
+  getElevationRange();
+  desired_elevation_pot = mapElevationToPotVal(0.0);
   steps_per_antenna_rev = calculateStepsPerRev(STEPS_PER_STEPPER_REV, STEPPER_TEETH, DRIVEN_GEAR_TEETH, GEARBOX_GEAR_RATIO);
 }
 
@@ -427,28 +488,13 @@ void loop()
   if((current_time - prev_control_time) >= CONTROL_INTERVAL)
   {
     prev_control_time = current_time;
-    //elevationControlLoop();
+    elevationControlLoop();
     imu_sample_counter++;
     if(imu_sample_counter == (IMU_SAMPLERATE_DELAY/CONTROL_INTERVAL))
     {
       imu_sample_counter = 0;
       getAntennaOrientation();
-      Serial.println("");
-      Serial.println(desired_step_number);
-      Serial.println(step_number);
-      Serial.println("");
-    }
-    if((current_time - prev_step_time) >= STEPPER_PHASE_DELAY)
-    {
-      updateStepper();
-      prev_step_time = current_time;
     }
   }
-  //for (int i = 0; i < steps_per_antenna_rev; i++) {
-  //  rotateStepperOneStep(CLOCKWISE);
-   // delay(3);
-  //}
-  //delay(1000);
-  //getAntennaOrientation();
   
 }

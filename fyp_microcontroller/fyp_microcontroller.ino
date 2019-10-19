@@ -491,14 +491,17 @@ void parseReceivedData()
 
 SIGNAL(TIMER0_COMPA_vect) 
 {
-  if(stepper_counter == STEPPER_PHASE_DELAY)
+  if(setup_is_complete)
   {
-    updateStepper();
-    stepper_counter = 0;
-  }
-  else
-  {
-    stepper_counter++;
+    if(stepper_counter == STEPPER_PHASE_DELAY)
+    {
+      updateStepper();
+      stepper_counter = 0;
+    }
+    else
+    {
+      stepper_counter++;
+    }
   }
 }
 
@@ -506,6 +509,13 @@ void setup()
 {
   // put your setup code here, to run once:
   Serial.begin(115200);
+  char received_char;
+  boolean start_char_received = false;
+  while(!start_char_received)
+  {
+    if(Serial.read() == 'B') start_char_received = true;
+    else delay(10);
+  }
   OCR0A = 0xAF;
   TIMSK0 |= _BV(OCIE0A); 
   setupPins();

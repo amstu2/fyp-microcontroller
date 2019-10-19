@@ -270,17 +270,7 @@ void elevationControlLoop()
     if(elevation_integral_term > 100.0) elevation_integral_term = 100.0;
     else if(elevation_integral_term < -100.0) elevation_integral_term = -100.0;
   }
-
-  //Serial.print("desired ");
-  //Serial.print(desired_elevation_pot);
-  //Serial.print(" current ");
-  //Serial.print(current_position);
-  //Serial.print(" duty ");
-  //Serial.print(duty_cycle);
-  //Serial.print(" current_error ");
-  //Serial.print(current_error);
-  //Serial.print(" integral ");
-  //Serial.println(elevation_integral_term);
+  
   if(duty_cycle<0)
   {
     setLinearActuatorSpeed(abs(duty_cycle));
@@ -517,6 +507,7 @@ void setup()
 
 void loop() 
 {
+  int current_azimuth, current_elevation;
   checkUARTRecv();
   current_time = millis();
   
@@ -533,6 +524,16 @@ void loop()
     {
       imu_sample_counter = 0;
       getAntennaOrientation();
+      serial_response_counter++;
+      if(serial_response_counter == 10)
+      {
+        if(step_number >= 0) current_azimuth = map(step_number, 0, steps_per_antenna_rev, 0, 3600);
+        else current_azimuth = map(step_number, 0, steps_per_antenna_rev, 3600, 0);
+        current_elevation = mapPotValToElevation(analogRead(LINEAR_POT));
+        sprintf(transmit_buffer, "OA%dE%d", current_azimuth, current_elevation);
+        Serial.println(transmit_buffer);
+        serial_response_counter = 0;
+      }
     }
   }
   

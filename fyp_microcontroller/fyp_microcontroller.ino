@@ -22,7 +22,7 @@
 #define LINEAR_ACT_IN2    12
 #define LINEAR_POT        A3
 
-#define MAX_ELEVATION_RANGING_SAMPLES 1500
+#define MAX_ELEVATION_RANGING_SAMPLES 2000
 #define ELEVATION_RANGING_TOLERANCE   2
 #define OFFSET_ORIENTATION_Y          0
 #define ELEVATION_CONFIRMED_LIMIT     30
@@ -232,6 +232,7 @@ void getElevationRange()
       {
         delay(IMU_SAMPLERATE_DELAY);
         getAntennaOrientation();
+        Serial.println(antenna_orientation_y);
         max_elevation += antenna_orientation_y;
       }
       max_elevation = max_elevation/10.0;
@@ -514,7 +515,11 @@ void setup()
   while(!start_char_received)
   {
     if(Serial.read() == 'B') start_char_received = true;
-    else delay(10);
+    else 
+    {
+      Serial.println('W');
+      delay(3);
+    }
   }
   OCR0A = 0xAF;
   TIMSK0 |= _BV(OCIE0A); 
@@ -548,7 +553,7 @@ void loop()
       imu_sample_counter = 0;
       getAntennaOrientation();
       serial_response_counter++;
-      if(serial_response_counter == 10)
+      if(serial_response_counter == 5)
       {
         if(step_number >= 0) current_azimuth = map(step_number, 0, steps_per_antenna_rev, 0, 3600);
         else current_azimuth = map(step_number, 0, steps_per_antenna_rev, 3600, 0);

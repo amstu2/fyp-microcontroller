@@ -475,6 +475,12 @@ void executeCommand()
       resetBearing();
       Serial.println("AR");
       break;
+    case 'K':
+      desired_elevation_pot = analogRead(LINEAR_POT);
+      setLinearActuatorSpeed(0);
+      desired_step_number = step_number;
+      disableStepperMotor();
+      break;
     default:
       Serial.println("EC");
       break;
